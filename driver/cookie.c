@@ -194,10 +194,10 @@ CookieAddMacToPacket(VOID *Message, SIZE_T Len, WG_PEER *Peer)
     else {
         RtlZeroMemory(Macs->Mac2, COOKIE_LEN);
         
-        UINT32 HeaderType = Le32ToCpu(((MESSAGE_HEADER *)Message)->Type);
-        if ((HeaderType & 0xFFFF00) != 0)
+        MESSAGE_HEADER * Header = ((MESSAGE_HEADER *)Message);
+        if (Peer->ObfuscateConnection)
         {
-            ((MESSAGE_HEADER *)Message)->Type = CpuToLe32(0xFF000000 | HeaderType);
+            Header->Type = CpuToLe32(0xFF000000) | Header->Type;
             
             UINT32 rand = 0;
             for (int i = 0; i < 16; i++) {

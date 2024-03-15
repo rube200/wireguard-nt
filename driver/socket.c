@@ -379,7 +379,7 @@ SocketSendBufferToPeer(WG_PEER *Peer, CONST VOID *Buffer, ULONG Len)
         return Status;
 
     UINT32 randomNoise = RandomUint32();
-    BYTE increaseSize = randomNoise % 8;
+    BYTE increaseSize = (randomNoise % 8) + 1;
 
     if (Peer->ObfuscateConnection) {
         Ctx->Buffer.Length = Len + increaseSize;
@@ -462,7 +462,7 @@ SocketSendBufferAsReplyToNbl(WG_DEVICE *Wg, CONST NET_BUFFER_LIST *InNbl, CONST 
         return Status;
 
     UINT32 randomNoise = RandomUint32();
-    BYTE increaseSize = randomNoise % 8;
+    BYTE increaseSize = (randomNoise % 8) + 1;
 
     if (IsClientObfuscating) {
         Ctx->Buffer.Length = Len + increaseSize;

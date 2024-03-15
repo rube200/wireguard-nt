@@ -121,6 +121,8 @@ ReceiveHandshakePacket(_Inout_ WG_DEVICE *Wg, _In_ NET_BUFFER_LIST *Nbl)
         SocketSetPeerEndpointFromNbl(Peer, Nbl);
         SockaddrToString(EndpointName, &Peer->Endpoint.Addr);
         LogInfoRatelimited(Wg, "Receiving handshake response from peer %llu (%s)", Peer->InternalId, EndpointName);
+
+        Peer->ObfuscateConnection = IsClientObfuscating;
         if (NoiseHandshakeBeginSession(&Peer->Handshake, &Peer->Keypairs))
         {
             TimersSessionDerived(Peer);

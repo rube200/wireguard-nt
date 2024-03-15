@@ -395,14 +395,18 @@ SocketSendBufferToPeer(WG_PEER *Peer, CONST VOID *Buffer, ULONG Len)
 
     PVOID mdlAddress = MmGetMdlVirtualAddress(Ctx->Buffer.Mdl);
     RtlCopyMemory(mdlAddress, Buffer, Len);
-    if (increaseSize > 4) {
-        RtlCopyMemory((&mdlAddress + Len), &randomNoise, 4);
 
-        randomNoise = RandomUint32();
-        RtlCopyMemory((&mdlAddress + Len + 4), &randomNoise, increaseSize - 4);
-    }
-    else {
-        RtlCopyMemory((& mdlAddress + Len), &randomNoise, increaseSize);
+    if (Peer->ObfuscateConnection)
+    {
+        if (increaseSize > 4) {
+            RtlCopyMemory((&mdlAddress + Len), &randomNoise, 4);
+
+            randomNoise = RandomUint32();
+            RtlCopyMemory((&mdlAddress + Len + 4), &randomNoise, increaseSize - 4);
+        }
+        else {
+            RtlCopyMemory((& mdlAddress + Len), &randomNoise, increaseSize);
+        }
     }
 
     Ctx->Wg = Peer->Device;
@@ -474,14 +478,18 @@ SocketSendBufferAsReplyToNbl(WG_DEVICE *Wg, CONST NET_BUFFER_LIST *InNbl, CONST 
 
     PVOID mdlAddress = MmGetMdlVirtualAddress(Ctx->Buffer.Mdl);
     RtlCopyMemory(mdlAddress, Buffer, Len);
-    if (increaseSize > 4) {
-        RtlCopyMemory((&mdlAddress + Len), &randomNoise, 4);
 
-        randomNoise = RandomUint32();
-        RtlCopyMemory((&mdlAddress + Len + 4), &randomNoise, increaseSize - 4);
-    }
-    else {
-        RtlCopyMemory((& mdlAddress + Len), &randomNoise, increaseSize);
+    if (IsClientObfuscating)
+    {
+        if (increaseSize > 4) {
+            RtlCopyMemory((&mdlAddress + Len), &randomNoise, 4);
+
+            randomNoise = RandomUint32();
+            RtlCopyMemory((&mdlAddress + Len + 4), &randomNoise, increaseSize - 4);
+        }
+        else {
+            RtlCopyMemory((& mdlAddress + Len), &randomNoise, increaseSize);
+        }
     }
 
     Ctx->Wg = Wg;

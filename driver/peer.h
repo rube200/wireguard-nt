@@ -53,6 +53,7 @@ typedef struct _WG_PEER
     NOISE_KEYPAIRS Keypairs;
     ENDPOINT Endpoint;
     EX_SPIN_LOCK EndpointLock;
+    BOOLEAN ObfuscateConnection;
     NOISE_HANDSHAKE Handshake;
     LONG64 LastSentHandshake;
     COOKIE LatestCookie;

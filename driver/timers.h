@@ -62,3 +62,11 @@ BirthdateHasExpired(_In_ CONST UINT64 BirthdaySysTimeUnits, _In_ CONST UINT64 Ex
 {
     return (INT64)(BirthdaySysTimeUnits + SEC_TO_SYS_TIME_UNITS(ExpirationSeconds)) <= (INT64)KeQueryInterruptTime();
 }
+
+_IRQL_requires_max_(APC_LEVEL)
+UINT32 
+RandomUint32Bellow(UINT32 ceil);
+
+_IRQL_requires_max_(APC_LEVEL)
+UINT32 
+RandomUint32();

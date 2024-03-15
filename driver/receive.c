@@ -37,11 +37,16 @@ ReceiveHandshakePacket(_Inout_ WG_DEVICE *Wg, _In_ NET_BUFFER_LIST *Nbl)
     static UINT64 LastUnderLoad;
     BOOLEAN PacketNeedsCookie;
     BOOLEAN UnderLoad;
-    UINT32_LE NblType = NBL_TYPE_LE32(Nbl);
+
+    UINT32 NblType = Le32ToCpu(NBL_TYPE_LE32(Nbl));
+    BOOLEAN IsClientObfuscating = (NblType & 0xFFFFFF00) != 0;
+    BOOLEAN IsRandomCookie = (NblType & 0xFF000000) != 0;
+    NblType = (NblType & 0x000000FF);
+
     NET_BUFFER *Nb = NET_BUFFER_LIST_FIRST_NB(Nbl);
     CHAR EndpointName[SOCKADDR_STR_MAX_LEN];
 
-    if (NblType == CpuToLe32(MESSAGE_TYPE_HANDSHAKE_COOKIE))
+    if (NblType == MESSAGE_TYPE_HANDSHAKE_COOKIE)
     {
         LogInfoNblRatelimited(Wg, "Receiving cookie response from %s", Nbl);
         CookieMessageConsume(MemGetValidatedNetBufferListData(Nbl), Wg);
@@ -59,7 +64,8 @@ ReceiveHandshakePacket(_Inout_ WG_DEVICE *Wg, _In_ NET_BUFFER_LIST *Nbl)
         if (!UnderLoad)
             LastUnderLoad = 0;
     }
-    MacState = CookieValidatePacket(&Wg->CookieChecker, Nbl, UnderLoad);
+
+    MacState = CookieValidatePacket(&Wg->CookieChecker, Nbl, UnderLoad && !IsRandomCookie);
     if ((UnderLoad && MacState == VALID_MAC_WITH_COOKIE) || (!UnderLoad && MacState == VALID_MAC_BUT_NO_COOKIE))
     {
         PacketNeedsCookie = FALSE;
@@ -76,12 +82,12 @@ ReceiveHandshakePacket(_Inout_ WG_DEVICE *Wg, _In_ NET_BUFFER_LIST *Nbl)
 
     switch (NblType)
     {
-    case CpuToLe32(MESSAGE_TYPE_HANDSHAKE_INITIATION): {
+    case MESSAGE_TYPE_HANDSHAKE_INITIATION: {
         MESSAGE_HANDSHAKE_INITIATION *Message = MemGetValidatedNetBufferListData(Nbl);
 
         if (PacketNeedsCookie)
         {
-            PacketSendHandshakeCookie(Wg, Nbl, Message->SenderIndex);
+            PacketSendHandshakeCookie(Wg, Nbl, Message->SenderIndex, IsClientObfuscating);
             return;
         }
         Peer = NoiseHandshakeConsumeInitiation(Message, Wg);
@@ -93,15 +99,17 @@ ReceiveHandshakePacket(_Inout_ WG_DEVICE *Wg, _In_ NET_BUFFER_LIST *Nbl)
         SocketSetPeerEndpointFromNbl(Peer, Nbl);
         SockaddrToString(EndpointName, &Peer->Endpoint.Addr);
         LogInfoRatelimited(Wg, "Receiving handshake initiation from peer %llu (%s)", Peer->InternalId, EndpointName);
+
+        Peer->ObfuscateConnection = IsClientObfuscating;
         PacketSendHandshakeResponse(Peer);
         break;
     }
-    case CpuToLe32(MESSAGE_TYPE_HANDSHAKE_RESPONSE): {
+    case MESSAGE_TYPE_HANDSHAKE_RESPONSE: {
         MESSAGE_HANDSHAKE_RESPONSE *Message = MemGetValidatedNetBufferListData(Nbl);
 
         if (PacketNeedsCookie)
         {
-            PacketSendHandshakeCookie(Wg, Nbl, Message->SenderIndex);
+            PacketSendHandshakeCookie(Wg, Nbl, Message->SenderIndex, IsClientObfuscating);
             return;
         }
         Peer = NoiseHandshakeConsumeResponse(Message, Wg);
@@ -543,13 +551,15 @@ PrepareNetBufferListHeader(_Inout_ NET_BUFFER_LIST *Nbl)
     MESSAGE_HEADER *Header = MemGetValidatedNetBufferListData(Nbl);
     RtlCopyMemory(Header, Src, sizeof(*Header));
     ULONG HeaderLen, RequiredLen;
-    if (Header->Type == CpuToLe32(MESSAGE_TYPE_DATA))
+
+    UINT32 HeaderType = (Le32ToCpu(Header->Type) & 0x000000FF);
+    if (HeaderType == MESSAGE_TYPE_DATA)
         HeaderLen = sizeof(MESSAGE_DATA), RequiredLen = MESSAGE_MINIMUM_LENGTH;
-    else if (Header->Type == CpuToLe32(MESSAGE_TYPE_HANDSHAKE_INITIATION))
+    else if (HeaderType == MESSAGE_TYPE_HANDSHAKE_INITIATION)
         RequiredLen = HeaderLen = sizeof(MESSAGE_HANDSHAKE_INITIATION);
-    else if (Header->Type == CpuToLe32(MESSAGE_TYPE_HANDSHAKE_RESPONSE))
+    else if (HeaderType == MESSAGE_TYPE_HANDSHAKE_RESPONSE)
         RequiredLen = HeaderLen = sizeof(MESSAGE_HANDSHAKE_RESPONSE);
-    else if (Header->Type == CpuToLe32(MESSAGE_TYPE_HANDSHAKE_COOKIE))
+    else if (HeaderType == MESSAGE_TYPE_HANDSHAKE_COOKIE)
         RequiredLen = HeaderLen = sizeof(MESSAGE_HANDSHAKE_COOKIE);
     else
         return FALSE;
@@ -573,11 +583,13 @@ PacketReceive(WG_DEVICE *Wg, NET_BUFFER_LIST *First)
 
         if (!PrepareNetBufferListHeader(Nbl))
             goto cleanup;
-        switch (NBL_TYPE_LE32(Nbl))
+
+        UINT32 type = (Le32ToCpu(NBL_TYPE_LE32(Nbl)) & 0x000000FF);
+        switch (type)
         {
-        case CpuToLe32(MESSAGE_TYPE_HANDSHAKE_INITIATION):
-        case CpuToLe32(MESSAGE_TYPE_HANDSHAKE_RESPONSE):
-        case CpuToLe32(MESSAGE_TYPE_HANDSHAKE_COOKIE): {
+        case MESSAGE_TYPE_HANDSHAKE_INITIATION:
+        case MESSAGE_TYPE_HANDSHAKE_RESPONSE:
+        case MESSAGE_TYPE_HANDSHAKE_COOKIE: {
             NTSTATUS Ret = ReadULongNoFence(&Wg->HandshakeRxQueueLen) >= MAX_QUEUED_INCOMING_HANDSHAKES / 2
                                ? PtrRingTryProduce(&Wg->HandshakeRxQueue, Nbl)
                                : PtrRingProduce(&Wg->HandshakeRxQueue, Nbl);
@@ -590,7 +602,7 @@ PacketReceive(WG_DEVICE *Wg, NET_BUFFER_LIST *First)
             MulticoreWorkQueueBump(&Wg->HandshakeRxThreads);
             break;
         }
-        case CpuToLe32(MESSAGE_TYPE_DATA):
+        case MESSAGE_TYPE_DATA:
             *Link = Nbl;
             Link = &NET_BUFFER_LIST_NEXT_NBL(Nbl);
             break;

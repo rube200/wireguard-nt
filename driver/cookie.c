@@ -191,21 +191,44 @@ CookieAddMacToPacket(VOID *Message, SIZE_T Len, WG_PEER *Peer)
     if (Peer->LatestCookie.IsValid &&
         !BirthdateHasExpired(Peer->LatestCookie.Birthdate, COOKIE_SECRET_MAX_AGE - COOKIE_SECRET_LATENCY))
         ComputeMac2(Macs->Mac2, Message, Len, Peer->LatestCookie.Cookie);
-    else
+    else {
         RtlZeroMemory(Macs->Mac2, COOKIE_LEN);
+        
+        UINT32 HeaderType = Le32ToCpu(((MESSAGE_HEADER *)Message)->Type);
+        if ((HeaderType & 0xFFFF00) != 0)
+        {
+            ((MESSAGE_HEADER *)Message)->Type = CpuToLe32(0xFF000000 | HeaderType);
+            
+            UINT32 rand = 0;
+            for (int i = 0; i < 16; i++) {
+                int j = (i % 4);
+                if (j == 0) {
+                    rand = RandomUint32();
+                }
+
+                UINT8 value = ((rand >> (j * 8)) & 0XFF);
+                Macs->Mac2[i] = value;
+            }
+        }
+    }
     MuReleasePushLockShared(&Peer->LatestCookie.Lock);
 }
 
 _Use_decl_annotations_
 VOID
-CookieMessageCreate(MESSAGE_HANDSHAKE_COOKIE *Dst, CONST NET_BUFFER_LIST *Nbl, UINT32_LE Index, COOKIE_CHECKER *Checker)
+CookieMessageCreate(MESSAGE_HANDSHAKE_COOKIE *Dst, CONST NET_BUFFER_LIST *Nbl, UINT32_LE Index, COOKIE_CHECKER *Checker, BOOLEAN IsClientObfuscating)
 {
     CONST ULONG NblLen = NET_BUFFER_DATA_LENGTH(NET_BUFFER_LIST_FIRST_NB(Nbl));
     UCHAR *NblData = MemGetValidatedNetBufferListData(Nbl);
     MESSAGE_MACS *Macs = (MESSAGE_MACS *)(NblData + NblLen - sizeof(*Macs));
     UINT8 Cookie[COOKIE_LEN];
 
-    Dst->Header.Type = CpuToLe32(MESSAGE_TYPE_HANDSHAKE_COOKIE);
+    UINT32 RandomNoise = 0;
+    if (IsClientObfuscating) {
+        RandomNoise = (RandomUint32Bellow(0xFFFF00) & 0xFFFF00);
+    }
+
+    Dst->Header.Type = CpuToLe32(RandomNoise | MESSAGE_TYPE_HANDSHAKE_COOKIE);
     Dst->ReceiverIndex = Index;
     CryptoRandom(Dst->Nonce, COOKIE_NONCE_LEN);
 

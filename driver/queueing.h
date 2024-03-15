@@ -152,7 +152,7 @@ PacketSendHandshakeResponse(_Inout_ WG_PEER *Peer);
 
 _IRQL_requires_max_(APC_LEVEL)
 VOID
-PacketSendHandshakeCookie(_Inout_ WG_DEVICE *Wg, _In_ CONST NET_BUFFER_LIST *InitiatingNbl, _In_ UINT32_LE SenderIndex);
+PacketSendHandshakeCookie(_Inout_ WG_DEVICE *Wg, _In_ CONST NET_BUFFER_LIST *InitiatingNbl, _In_ UINT32_LE SenderIndex, _In_ BOOLEAN IsClientObfuscating);
 
 _IRQL_requires_max_(DISPATCH_LEVEL)
 VOID

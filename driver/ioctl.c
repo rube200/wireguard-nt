@@ -170,6 +170,8 @@ Get(_In_ DEVICE_OBJECT *DeviceObject, _Inout_ IRP *Irp)
                 IoctlPeer->Flags |= WG_IOCTL_PEER_HAS_ENDPOINT;
             }
             ExReleaseSpinLockShared(&Peer->EndpointLock, Irql);
+            if (Peer->ObfuscateConnection)
+                IoctlPeer->Flags |= WG_IOCTL_PEER_OBFUSCATE_CONNECTION;
         }
 
         WG_IOCTL_ALLOWED_IP *IoctlAllowedIp = (WG_IOCTL_ALLOWED_IP *)((UCHAR *)IoctlPeer + sizeof(WG_IOCTL_PEER));
@@ -374,6 +376,11 @@ SetPeer(_Inout_ WG_DEVICE *Wg, _Inout_ CONST volatile WG_IOCTL_PEER **UnsafeIoct
         Peer->PersistentKeepaliveInterval = IoctlPeer.PersistentKeepalive;
         if (SendKeepalive)
             PacketSendKeepalive(Peer);
+    }
+
+    if (IoctlPeer.Flags & WG_IOCTL_PEER_OBFUSCATE_CONNECTION)
+    {
+        Peer->ObfuscateConnection = TRUE;
     }
 
     if (IsUp)

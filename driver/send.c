@@ -30,7 +30,7 @@ PacketSendHandshakeInitiation(_Inout_ WG_PEER *Peer)
     SockaddrToString(EndpointName, &Peer->Endpoint.Addr);
     LogInfoRatelimited(Peer->Device, "Sending handshake initiation to peer %llu (%s)", Peer->InternalId, EndpointName);
 
-    if (NoiseHandshakeCreateInitiation(&Packet, &Peer->Handshake))
+    if (NoiseHandshakeCreateInitiation(&Packet, &Peer->Handshake, Peer->ObfuscateConnection))
     {
         CookieAddMacToPacket(&Packet, sizeof(Packet), Peer);
         TimersAnyAuthenticatedPacketTraversal(Peer);
@@ -109,7 +109,7 @@ PacketSendHandshakeResponse(WG_PEER *Peer)
     SockaddrToString(EndpointName, &Peer->Endpoint.Addr);
     LogInfoRatelimited(Peer->Device, "Sending handshake response to peer %llu (%s)", Peer->InternalId, EndpointName);
 
-    if (NoiseHandshakeCreateResponse(&Packet, &Peer->Handshake))
+    if (NoiseHandshakeCreateResponse(&Packet, &Peer->Handshake, Peer->ObfuscateConnection))
     {
         CookieAddMacToPacket(&Packet, sizeof(Packet), Peer);
         if (NoiseHandshakeBeginSession(&Peer->Handshake, &Peer->Keypairs))
@@ -125,12 +125,12 @@ PacketSendHandshakeResponse(WG_PEER *Peer)
 
 _Use_decl_annotations_
 VOID
-PacketSendHandshakeCookie(WG_DEVICE *Wg, CONST NET_BUFFER_LIST *InitiatingNbl, UINT32_LE SenderIndex)
+PacketSendHandshakeCookie(WG_DEVICE *Wg, CONST NET_BUFFER_LIST *InitiatingNbl, UINT32_LE SenderIndex, BOOLEAN IsClientObfuscating)
 {
     MESSAGE_HANDSHAKE_COOKIE Packet;
 
     LogInfoNblRatelimited(Wg, "Sending cookie response for denied handshake message for %s", InitiatingNbl);
-    CookieMessageCreate(&Packet, InitiatingNbl, SenderIndex, &Wg->CookieChecker);
+    CookieMessageCreate(&Packet, InitiatingNbl, SenderIndex, &Wg->CookieChecker, IsClientObfuscating);
     SocketSendBufferAsReplyToNbl(Wg, InitiatingNbl, &Packet, sizeof(Packet));
 }
 
@@ -181,11 +181,18 @@ EncryptPacket(
     _Inout_ NET_BUFFER *NbOut,
     _Inout_ NET_BUFFER *NbIn,
     _In_ CONST NOISE_KEYPAIR *Keypair,
-    _In_ UINT32 Mtu)
+    _In_ UINT32 Mtu,
+    _In_ BOOLEAN IsClientObfuscating)
 {
     ULONG PaddingLen = CalculateNblPadding(NbIn, Mtu);
     UCHAR *OutBuffer = MemGetValidatedNetBufferData(NbOut);
-    *(MESSAGE_DATA *)OutBuffer = (MESSAGE_DATA){ .Header.Type = CpuToLe32(MESSAGE_TYPE_DATA),
+
+    UINT32 RandomNoise = 0;
+    if (IsClientObfuscating) {
+        RandomNoise = (RandomUint32Bellow(0xFFFF00) & 0xFFFF00);
+    }
+
+    *(MESSAGE_DATA *)OutBuffer = (MESSAGE_DATA){ .Header.Type = CpuToLe32(RandomNoise | MESSAGE_TYPE_DATA),
                                                  .KeyIdx = Keypair->RemoteIndex,
                                                  .Counter = CpuToLe64(NET_BUFFER_NONCE(NbOut)) };
     OutBuffer += sizeof(MESSAGE_DATA);
@@ -339,7 +346,7 @@ PacketEncryptWorker(MULTICORE_WORKQUEUE *WorkQueue)
                  NbIn && NbOut && State == PACKET_STATE_CRYPTED;
                  NbIn = NET_BUFFER_NEXT_NB(NbIn), NbOut = NET_BUFFER_NEXT_NB(NbOut))
             {
-                if (!EncryptPacket(&Simd, NbOut, NbIn, Keypair, Mtu))
+                if (!EncryptPacket(&Simd, NbOut, NbIn, Keypair, Mtu, Peer->ObfuscateConnection))
                     State = PACKET_STATE_DEAD;
             }
             if (Nbl != Nbl->ParentNetBufferList)

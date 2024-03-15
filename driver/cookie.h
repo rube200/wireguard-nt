@@ -69,7 +69,8 @@ CookieMessageCreate(
     _Out_ MESSAGE_HANDSHAKE_COOKIE *Src,
     _In_ CONST NET_BUFFER_LIST *Nbl,
     _In_ UINT32_LE Index,
-    _Inout_ COOKIE_CHECKER *Checker);
+    _Inout_ COOKIE_CHECKER *Checker,
+    _In_ BOOLEAN IsClientObfuscating);
 
 _IRQL_requires_max_(APC_LEVEL)
 VOID

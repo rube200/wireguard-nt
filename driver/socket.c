@@ -377,12 +377,34 @@ SocketSendBufferToPeer(WG_PEER *Peer, CONST VOID *Buffer, ULONG Len)
     SOCKET_SEND_CTX *Ctx = ExAllocateFromLookasideListEx(&SocketSendCtxCache);
     if (!Ctx)
         return Status;
-    Ctx->Buffer.Length = Len;
+
+    UINT32 randomNoise = RandomUint32();
+    BYTE increaseSize = randomNoise % 8;
+
+    if (Peer->ObfuscateConnection) {
+        Ctx->Buffer.Length = Len + increaseSize;
+    }
+    else {
+        Ctx->Buffer.Length = Len;
+    }
+
     Ctx->Buffer.Offset = 0;
-    Ctx->Buffer.Mdl = MemAllocateDataAndMdlChain(Len);
+    Ctx->Buffer.Mdl = MemAllocateDataAndMdlChain((ULONG)Ctx->Buffer.Length);
     if (!Ctx->Buffer.Mdl)
         goto cleanupCtx;
-    RtlCopyMemory(MmGetMdlVirtualAddress(Ctx->Buffer.Mdl), Buffer, Len);
+
+    PVOID mdlAddress = MmGetMdlVirtualAddress(Ctx->Buffer.Mdl);
+    RtlCopyMemory(mdlAddress, Buffer, Len);
+    if (increaseSize > 4) {
+        RtlCopyMemory((&mdlAddress + Len), &randomNoise, 4);
+
+        randomNoise = RandomUint32();
+        RtlCopyMemory((&mdlAddress + Len + 4), &randomNoise, increaseSize - 4);
+    }
+    else {
+        RtlCopyMemory((& mdlAddress + Len), &randomNoise, increaseSize);
+    }
+
     Ctx->Wg = Peer->Device;
     IoInitializeIrp(&Ctx->Irp, sizeof(Ctx->IrpBuffer), 1);
     IoSetCompletionRoutine(&Ctx->Irp, BufferSendComplete, Ctx, TRUE, TRUE, TRUE);
@@ -413,7 +435,7 @@ SocketSendBufferToPeer(WG_PEER *Peer, CONST VOID *Buffer, ULONG Len)
     RcuReadUnlockFromDpcLevel();
     ExReleaseSpinLockShared(&Peer->EndpointLock, Irql);
     if (NT_SUCCESS(Status))
-        Peer->TxBytes += Len;
+        Peer->TxBytes += Ctx->Buffer.Length;
     return Status;
 
 cleanupRcuLock:
@@ -428,18 +450,40 @@ cleanupCtx:
 
 _Use_decl_annotations_
 NTSTATUS
-SocketSendBufferAsReplyToNbl(WG_DEVICE *Wg, CONST NET_BUFFER_LIST *InNbl, CONST VOID *Buffer, ULONG Len)
+SocketSendBufferAsReplyToNbl(WG_DEVICE *Wg, CONST NET_BUFFER_LIST *InNbl, CONST VOID *Buffer, ULONG Len, BOOLEAN IsClientObfuscating)
 {
     NTSTATUS Status = STATUS_INSUFFICIENT_RESOURCES;
     SOCKET_SEND_CTX *Ctx = ExAllocateFromLookasideListEx(&SocketSendCtxCache);
     if (!Ctx)
         return Status;
-    Ctx->Buffer.Length = Len;
+
+    UINT32 randomNoise = RandomUint32();
+    BYTE increaseSize = randomNoise % 8;
+
+    if (IsClientObfuscating) {
+        Ctx->Buffer.Length = Len + increaseSize;
+    }
+    else {
+        Ctx->Buffer.Length = Len;
+    }
+
     Ctx->Buffer.Offset = 0;
-    Ctx->Buffer.Mdl = MemAllocateDataAndMdlChain(Len);
+    Ctx->Buffer.Mdl = MemAllocateDataAndMdlChain((ULONG)Ctx->Buffer.Length);
     if (!Ctx->Buffer.Mdl)
         goto cleanupCtx;
-    RtlCopyMemory(MmGetMdlVirtualAddress(Ctx->Buffer.Mdl), Buffer, Len);
+
+    PVOID mdlAddress = MmGetMdlVirtualAddress(Ctx->Buffer.Mdl);
+    RtlCopyMemory(mdlAddress, Buffer, Len);
+    if (increaseSize > 4) {
+        RtlCopyMemory((&mdlAddress + Len), &randomNoise, 4);
+
+        randomNoise = RandomUint32();
+        RtlCopyMemory((&mdlAddress + Len + 4), &randomNoise, increaseSize - 4);
+    }
+    else {
+        RtlCopyMemory((& mdlAddress + Len), &randomNoise, increaseSize);
+    }
+
     Ctx->Wg = Wg;
     IoInitializeIrp(&Ctx->Irp, sizeof(Ctx->IrpBuffer), 1);
     IoSetCompletionRoutine(&Ctx->Irp, BufferSendComplete, Ctx, TRUE, TRUE, TRUE);

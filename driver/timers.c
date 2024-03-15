@@ -72,6 +72,20 @@ GenerateJitter(_In_ ULONG Range)
     return (ULONG)(((UINT64)RtlRandomEx(&JitterSeed) * Range) >> 32);
 }
 
+_Use_decl_annotations_
+UINT32 
+RandomUint32Bellow(UINT32 ceil)
+{
+    return GenerateJitter(ceil + 1);
+}
+
+_Use_decl_annotations_
+UINT32 
+RandomUint32()
+{
+    return RtlRandomEx(&JitterSeed);
+}
+
 /*
  * - Timer for retransmitting the handshake if we don't hear back after
  * `REKEY_TIMEOUT + jitter` ms.

@@ -164,7 +164,7 @@ _Requires_lock_not_held_(Handshake->Lock)
 _Must_inspect_result_
 _Return_type_success_(return != FALSE)
 BOOLEAN
-NoiseHandshakeCreateInitiation(_Out_ MESSAGE_HANDSHAKE_INITIATION *Dst, _Inout_ NOISE_HANDSHAKE *Handshake);
+NoiseHandshakeCreateInitiation(_Out_ MESSAGE_HANDSHAKE_INITIATION *Dst, _Inout_ NOISE_HANDSHAKE *Handshake, _In_ BOOLEAN IsClientObfuscating);
 
 _IRQL_requires_max_(APC_LEVEL)
 _Requires_lock_not_held_(Wg->StaticIdentity.Lock)
@@ -179,7 +179,7 @@ _Requires_lock_not_held_(Handshake->Lock)
 _Must_inspect_result_
 _Return_type_success_(return != FALSE)
 BOOLEAN
-NoiseHandshakeCreateResponse(_Out_ MESSAGE_HANDSHAKE_RESPONSE *Dst, _Inout_ NOISE_HANDSHAKE *Handshake);
+NoiseHandshakeCreateResponse(_Out_ MESSAGE_HANDSHAKE_RESPONSE *Dst, _Inout_ NOISE_HANDSHAKE *Handshake, _In_ BOOLEAN IsClientObfuscating);
 
 _IRQL_requires_max_(APC_LEVEL)
 _Requires_lock_not_held_(Wg->StaticIdentity.Lock)

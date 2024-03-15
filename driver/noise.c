@@ -558,7 +558,7 @@ Tai64nNow(_Out_writes_bytes_all_(NOISE_TIMESTAMP_LEN) UINT8 Output[NOISE_TIMESTA
 
 _Use_decl_annotations_
 BOOLEAN
-NoiseHandshakeCreateInitiation(MESSAGE_HANDSHAKE_INITIATION *Dst, NOISE_HANDSHAKE *Handshake)
+NoiseHandshakeCreateInitiation(MESSAGE_HANDSHAKE_INITIATION *Dst, NOISE_HANDSHAKE *Handshake, BOOLEAN IsClientObfuscating)
 {
     UINT8 Timestamp[NOISE_TIMESTAMP_LEN];
     UINT8 Key[NOISE_SYMMETRIC_KEY_LEN];
@@ -570,8 +570,12 @@ NoiseHandshakeCreateInitiation(MESSAGE_HANDSHAKE_INITIATION *Dst, NOISE_HANDSHAK
     if (!Handshake->StaticIdentity->HasIdentity)
         goto out;
 
-    Dst->Header.Type = CpuToLe32(MESSAGE_TYPE_HANDSHAKE_INITIATION);
+    UINT32 RandomNoise = 0;
+    if (IsClientObfuscating) {
+        RandomNoise = (RandomUint32Bellow(0xFFFF00) & 0xFFFF00);
+    }
 
+    Dst->Header.Type = CpuToLe32(RandomNoise | MESSAGE_TYPE_HANDSHAKE_INITIATION);
     HandshakeInit(Handshake->ChainingKey, Handshake->Hash, Handshake->RemoteStatic);
 
     /* e */
@@ -689,7 +693,7 @@ out:
 
 _Use_decl_annotations_
 BOOLEAN
-NoiseHandshakeCreateResponse(MESSAGE_HANDSHAKE_RESPONSE *Dst, NOISE_HANDSHAKE *Handshake)
+NoiseHandshakeCreateResponse(MESSAGE_HANDSHAKE_RESPONSE *Dst, NOISE_HANDSHAKE *Handshake, BOOLEAN IsClientObfuscating)
 {
     UINT8 Key[NOISE_SYMMETRIC_KEY_LEN];
     BOOLEAN Ret = FALSE;
@@ -700,7 +704,12 @@ NoiseHandshakeCreateResponse(MESSAGE_HANDSHAKE_RESPONSE *Dst, NOISE_HANDSHAKE *H
     if (Handshake->State != HANDSHAKE_CONSUMED_INITIATION)
         goto out;
 
-    Dst->Header.Type = CpuToLe32(MESSAGE_TYPE_HANDSHAKE_RESPONSE);
+    UINT32 RandomNoise = 0;
+    if (IsClientObfuscating) {
+        RandomNoise = (RandomUint32Bellow(0xFFFF00) & 0xFFFF00);
+    }
+
+    Dst->Header.Type = CpuToLe32(RandomNoise | MESSAGE_TYPE_HANDSHAKE_RESPONSE);
     Dst->ReceiverIndex = Handshake->RemoteIndex;
 
     /* e */

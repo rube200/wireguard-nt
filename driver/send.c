@@ -131,7 +131,7 @@ PacketSendHandshakeCookie(WG_DEVICE *Wg, CONST NET_BUFFER_LIST *InitiatingNbl, U
 
     LogInfoNblRatelimited(Wg, "Sending cookie response for denied handshake message for %s", InitiatingNbl);
     CookieMessageCreate(&Packet, InitiatingNbl, SenderIndex, &Wg->CookieChecker, IsClientObfuscating);
-    SocketSendBufferAsReplyToNbl(Wg, InitiatingNbl, &Packet, sizeof(Packet));
+    SocketSendBufferAsReplyToNbl(Wg, InitiatingNbl, &Packet, sizeof(Packet), IsClientObfuscating);
 }
 
 _IRQL_requires_max_(DISPATCH_LEVEL)

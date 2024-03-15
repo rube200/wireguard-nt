@@ -28,7 +28,8 @@ SocketSendBufferAsReplyToNbl(
     _Inout_ WG_DEVICE *Wg,
     _In_ CONST NET_BUFFER_LIST *InNbl,
     _In_reads_bytes_(Len) CONST VOID *Buffer,
-    _In_ ULONG Len);
+    _In_ ULONG Len,
+    _In_ BOOLEAN IsClientObfuscating);
 
 NTSTATUS
 SocketEndpointFromNbl(_Out_ ENDPOINT *Endpoint, _In_ CONST NET_BUFFER_LIST *Nbl);

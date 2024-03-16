@@ -555,16 +555,23 @@ PrepareNetBufferListHeader(_Inout_ NET_BUFFER_LIST *Nbl)
     ULONG HeaderLen, RequiredLen;
 
     UINT32 HeaderType = (Le32ToCpu(Header->Type) & 0x000000FF);
-    if (HeaderType == MESSAGE_TYPE_DATA)
-        HeaderLen = sizeof(MESSAGE_DATA), RequiredLen = MESSAGE_MINIMUM_LENGTH;
-    else if (HeaderType == MESSAGE_TYPE_HANDSHAKE_INITIATION)
-        RequiredLen = HeaderLen = sizeof(MESSAGE_HANDSHAKE_INITIATION);
-    else if (HeaderType == MESSAGE_TYPE_HANDSHAKE_RESPONSE)
-        RequiredLen = HeaderLen = sizeof(MESSAGE_HANDSHAKE_RESPONSE);
-    else if (HeaderType == MESSAGE_TYPE_HANDSHAKE_COOKIE)
-        RequiredLen = HeaderLen = sizeof(MESSAGE_HANDSHAKE_COOKIE);
-    else
-        return FALSE;
+    switch (HeaderType)
+    {
+        case MESSAGE_TYPE_DATA:
+            HeaderLen = sizeof(MESSAGE_DATA); RequiredLen = MESSAGE_MINIMUM_LENGTH;
+            break;
+        case MESSAGE_TYPE_HANDSHAKE_INITIATION:
+            RequiredLen = HeaderLen = sizeof(MESSAGE_HANDSHAKE_INITIATION);
+            break;
+        case MESSAGE_TYPE_HANDSHAKE_RESPONSE:
+            RequiredLen = HeaderLen = sizeof(MESSAGE_HANDSHAKE_RESPONSE);;
+            break;
+        case MESSAGE_TYPE_HANDSHAKE_COOKIE:
+            RequiredLen = HeaderLen = sizeof(MESSAGE_HANDSHAKE_COOKIE);
+            break;
+        default:
+            return FALSE;
+    }
     if (Buffer->Length < RequiredLen || MdlLen < HeaderLen)
         return FALSE;
     RtlCopyMemory(Header + 1, Src + sizeof(*Header), HeaderLen - sizeof(*Header));

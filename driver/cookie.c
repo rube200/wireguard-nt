@@ -15,6 +15,30 @@
 
 #pragma warning(disable : 4295) /* array is too small to include a terminating null character */
 
+_IRQL_requires_max_(DISPATCH_LEVEL)
+_Return_type_success_(return != 0)
+_Must_inspect_result_
+static SIZE_T
+GetHeaderLen(_In_ MESSAGE_HEADER * Header)
+{
+    UINT32 HeaderType = (Le32ToCpu(Header->Type) & 0x000000FF);
+    switch (HeaderType)
+    {
+        case MESSAGE_TYPE_DATA:
+            return sizeof(MESSAGE_DATA);
+        case MESSAGE_TYPE_HANDSHAKE_INITIATION:
+            return sizeof(MESSAGE_HANDSHAKE_INITIATION);
+            break;
+        case MESSAGE_TYPE_HANDSHAKE_RESPONSE:
+            return sizeof(MESSAGE_HANDSHAKE_RESPONSE);;
+            break;
+        case MESSAGE_TYPE_HANDSHAKE_COOKIE:
+            return sizeof(MESSAGE_HANDSHAKE_COOKIE);
+        default:
+            return 0;
+    }
+}
+
 _Use_decl_annotations_
 VOID
 CookieCheckerInit(COOKIE_CHECKER *Checker, WG_DEVICE *Wg)
@@ -142,8 +166,11 @@ _Use_decl_annotations_
 COOKIE_MAC_STATE
 CookieValidatePacket(COOKIE_CHECKER *Checker, NET_BUFFER_LIST *Nbl, BOOLEAN CheckCookie)
 {
-    CONST ULONG NblLen = NET_BUFFER_DATA_LENGTH(NET_BUFFER_LIST_FIRST_NB(Nbl));
     UCHAR *NblData = MemGetValidatedNetBufferListData(Nbl);
+    SIZE_T NblLen = GetHeaderLen((MESSAGE_HEADER *)NblData);
+    if (NblLen == 0) {
+        NblLen = NET_BUFFER_DATA_LENGTH(NET_BUFFER_LIST_FIRST_NB(Nbl));
+    }
     MESSAGE_MACS *Macs = (MESSAGE_MACS *)(NblData + NblLen - sizeof(*Macs));
     COOKIE_MAC_STATE Ret;
     UINT8 ComputedMac[COOKIE_LEN];
@@ -182,35 +209,31 @@ CookieAddMacToPacket(VOID *Message, SIZE_T Len, WG_PEER *Peer)
     MESSAGE_MACS *Macs = (MESSAGE_MACS *)((UINT8 *)Message + Len - sizeof(*Macs));
 
     MuAcquirePushLockExclusive(&Peer->LatestCookie.Lock);
+
+    BOOLEAN needsMac2 = Peer->LatestCookie.IsValid && !BirthdateHasExpired(Peer->LatestCookie.Birthdate, COOKIE_SECRET_MAX_AGE - COOKIE_SECRET_LATENCY);
+    if (!needsMac2) {
+        if (Peer->ObfuscateConnection) {
+            MESSAGE_HEADER * Header = ((MESSAGE_HEADER *)Message);
+            Header->Type = CpuToLe32(0xFF000000) | Header->Type;
+
+            for (int i = 0; i < 4; i++) {
+                UINT32 rand = RandomUint32();
+                RtlCopyMemory((Macs->Mac2 + i * 4), &rand, 4);
+            }
+        }
+        else 
+            RtlZeroMemory(Macs->Mac2, COOKIE_LEN);
+    }
+
     ComputeMac1(Macs->Mac1, Message, Len, Peer->LatestCookie.MessageMac1Key);
     RtlCopyMemory(Peer->LatestCookie.LastMac1Sent, Macs->Mac1, COOKIE_LEN);
     Peer->LatestCookie.HaveSentMac1 = TRUE;
     MuReleasePushLockExclusive(&Peer->LatestCookie.Lock);
 
     MuAcquirePushLockShared(&Peer->LatestCookie.Lock);
-    if (Peer->LatestCookie.IsValid &&
-        !BirthdateHasExpired(Peer->LatestCookie.Birthdate, COOKIE_SECRET_MAX_AGE - COOKIE_SECRET_LATENCY))
+    if (needsMac2)
         ComputeMac2(Macs->Mac2, Message, Len, Peer->LatestCookie.Cookie);
-    else {
-        RtlZeroMemory(Macs->Mac2, COOKIE_LEN);
-        
-        MESSAGE_HEADER * Header = ((MESSAGE_HEADER *)Message);
-        if (Peer->ObfuscateConnection)
-        {
-            Header->Type = CpuToLe32(0xFF000000) | Header->Type;
-            
-            UINT32 rand = 0;
-            for (int i = 0; i < 16; i++) {
-                int j = (i % 4);
-                if (j == 0) {
-                    rand = RandomUint32();
-                }
 
-                UINT8 value = ((rand >> (j * 8)) & 0XFF);
-                Macs->Mac2[i] = value;
-            }
-        }
-    }
     MuReleasePushLockShared(&Peer->LatestCookie.Lock);
 }
 
